@@ -28,7 +28,8 @@ run() {
 
 # Find USB- and MMC-attached block disks
 mapfile -t USB_DEVS < <(lsblk -ndo NAME,TRAN,TYPE 2>/dev/null \
-  | awk '($2=="usb" || $2=="mmc") && $3=="disk" {print "/dev/" $1}')
+  | awk '($2=="usb" || $2=="mmc") && $3=="disk" {print "/dev/" $1}
+         $1~/^mmcblk/ && $2=="disk" {print "/dev/" $1}')
 
 if [ ${#USB_DEVS[@]} -eq 0 ]; then
   echo "No USB/MMC block devices found." >&2
