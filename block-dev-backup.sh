@@ -26,24 +26,25 @@ run() {
   "$@"
 }
 
-# Find USB-attached block disks
+# Find USB- and MMC-attached block disks
 mapfile -t USB_DEVS < <(lsblk -ndo NAME,TRAN,TYPE 2>/dev/null \
-  | awk '$2=="usb" && $3=="disk" {print "/dev/" $1}')
+  | awk '($2=="usb" || $2=="mmc") && $3=="disk" {print "/dev/" $1}')
 
 if [ ${#USB_DEVS[@]} -eq 0 ]; then
-  echo "No USB block devices found." >&2
+  echo "No USB/MMC block devices found." >&2
   echo "Available block devices:" >&2
   lsblk -o NAME,TRAN,TYPE,SIZE,MODEL >&2
   exit 1
 fi
 
-echo "USB block devices found:"
+echo "USB/MMC block devices found:"
 for i in "${!USB_DEVS[@]}"; do
   dev="${USB_DEVS[$i]}"
+  tran=$(lsblk -ndo TRAN "$dev" 2>/dev/null)
   size=$(lsblk -ndo SIZE "$dev" 2>/dev/null || echo "?")
   model=$(lsblk -ndo MODEL "$dev" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
   vendor=$(lsblk -ndo VENDOR "$dev" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  echo "  [$i] $dev  ${size}  vendor=${vendor}  model=${model}"
+  echo "  [$i] $dev  ${size}  tran=${tran}  vendor=${vendor}  model=${model}"
 done
 
 read -rp "Select device [0-$((${#USB_DEVS[@]}-1))]: " sel
@@ -54,10 +55,15 @@ fi
 
 SRC="${USB_DEVS[$sel]}"
 
-# Build a clean directory name from vendor + model
+# Build a clean directory name: prefer vendor+model, fall back to kernel device name
+# (MMC cards often expose no MODEL/VENDOR via lsblk)
 VENDOR=$(lsblk -ndo VENDOR "$SRC" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 MODEL=$(lsblk -ndo MODEL  "$SRC" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-RAW_LABEL="${VENDOR:+${VENDOR}_}${MODEL:-UNKNOWN}"
+if [ -z "$VENDOR" ] && [ -z "$MODEL" ]; then
+  RAW_LABEL=$(basename "$SRC")
+else
+  RAW_LABEL="${VENDOR:+${VENDOR}_}${MODEL:-UNKNOWN}"
+fi
 DEVICE_DIR=$(echo "$RAW_LABEL" | tr -s ' /' '_' | tr -dc 'A-Za-z0-9_-')
 
 if [ "$USE_UNIQUE" -eq 1 ]; then
